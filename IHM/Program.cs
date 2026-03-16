@@ -8,11 +8,10 @@ namespace IHM_essai
         [STAThread]
         static void Main()
         {
-            // To customize application configuration such as set llhigh DPI settings or default font,
+            // To customize application configuration such as set high DPI settings or default font,
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
             Application.Run(new Form1());
-            //on peut aussi faire un truc du genre :
         }
     }
 }
