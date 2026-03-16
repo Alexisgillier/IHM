@@ -12,6 +12,7 @@ namespace IHM_essai
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
             Application.Run(new Form1());
+            //on peut aussi faire un truc du genre :
         }
     }
 }
