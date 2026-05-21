@@ -1,25 +1,20 @@
-﻿namespace IHM_essai
+﻿namespace RucheMQTTApp
 {
     partial class Form1
     {
-        private System.ComponentModel.IContainer? components = null;
-
+        private System.ComponentModel.IContainer components = null;
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
-                components.Dispose();
+            if (disposing && (components != null)) components.Dispose();
             base.Dispose(disposing);
         }
-
         private void InitializeComponent()
         {
-            SuspendLayout();
-            AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
-            AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            ClientSize = new System.Drawing.Size(1280, 800);
-            Name = "Form1";
-            Text = "BeeMonitor";
-            ResumeLayout(false);
+            this.SuspendLayout();
+            this.ClientSize = new System.Drawing.Size(984, 661);
+            this.Name = "Form1";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+            this.ResumeLayout(false);
         }
     }
 }

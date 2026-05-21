@@ -1,871 +1,375 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Globalization;
-using System.Net.Http;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Microsoft.Web.WebView2.WinForms;
+using System.Linq;
+using GMap.NET;
+using GMap.NET.WindowsForms;
+using GMarker = GMap.NET.WindowsForms.Markers.GMarkerGoogle;
+using GMap.NET.MapProviders;
+using LiveCharts;
+using LiveCharts.Wpf;
+using LiveCharts.Defaults;
+using WinCharts = LiveCharts.WinForms;
 
-namespace IHM_essai
+namespace RucheMQTTApp
 {
     public partial class Form1 : Form
     {
-        // ═══════════════════════════════════════════
-        //  COULEURS
-        // ═══════════════════════════════════════════
-        static readonly Color BG = Color.FromArgb(26, 26, 46);
-        static readonly Color CARD = Color.FromArgb(22, 33, 62);
-        static readonly Color CARD2 = Color.FromArgb(15, 52, 96);
-        static readonly Color HONEY = Color.FromArgb(245, 166, 35);
-        static readonly Color LEAF = Color.FromArgb(64, 145, 108);
-        static readonly Color MUTED = Color.FromArgb(139, 139, 154);
-        static readonly Color TEXTCOLOR = Color.FromArgb(240, 230, 211);
-        static readonly Color SKY = Color.FromArgb(74, 144, 217);
-        static readonly Color DANGER = Color.FromArgb(230, 57, 70);
+        private RecevoirMqtt _mqttService;
+        private int _selectedId = 1;
+        private WinCharts.CartesianChart chartT, chartP, chartH;
+        private Label lblT, lblP, lblH, lblAlerte;
+        private Panel topPanel, sidePanel, pnlAlerte;
+        private GMapControl map;
+        private GMapOverlay markersOverlay;
+        private ComboBox comboRuches;
+        private DataGridView gridLogs;
+        private Timer blinkTimer;
+        private bool isBlink = false;
+        private int _idAlerteEnCours = -1;
 
-        // ═══════════════════════════════════════════
-        //  MODÈLE DE DONNÉES
-        // ═══════════════════════════════════════════
-        class HiveData
-        {
-            public string Name = "";   // CS8618 : initialisé
-            public string Temp = "";
-            public string Hum = "";
-            public string Weight = "";
-            public float[] WeightSeries = Array.Empty<float>();
-            public float[] TempSeries = Array.Empty<float>();
-            public float[] HumSeries = Array.Empty<float>();
-            public double Lat;
-            public double Lng;
-            public bool Stolen;
-        }
+        // Stockage des données
+        private Dictionary<int, ChartValues<DateTimePoint>> histT = new Dictionary<int, ChartValues<DateTimePoint>>();
+        private Dictionary<int, ChartValues<DateTimePoint>> histP = new Dictionary<int, ChartValues<DateTimePoint>>();
+        private Dictionary<int, ChartValues<DateTimePoint>> histH = new Dictionary<int, ChartValues<DateTimePoint>>();
+        private Dictionary<int, PointLatLng> positions = new Dictionary<int, PointLatLng>();
+        private Dictionary<int, string> messagesAlerte = new Dictionary<int, string>();
+        private Dictionary<int, bool> etatsAcquits = new Dictionary<int, bool>();
 
-        // ═══════════════════════════════════════════
-        //  DONNÉES DES RUCHES
-        // ═══════════════════════════════════════════
-        readonly Dictionary<string, HiveData> hives = new()
-        {
-            ["all"] = new HiveData
-            {
-                Name = "Toutes les ruches",
-                Temp = "Moy. 4.1 / 25.8\u00b0C",
-                Hum = "87%",
-                Weight = "160.2 Kg",
-                WeightSeries = new float[] { 158f, 159f, 160f, 161f, 159f, 160f, 160.2f },
-                TempSeries = new float[] { 24.5f, 25.1f, 25.8f, 26.2f, 25.5f, 25.9f, 25.8f },
-                HumSeries = new float[] { 85f, 86f, 87f, 88f, 87f, 86f, 87f },
-                Lat = 46.60,
-                Lng = 2.35,
-                Stolen = false
-            },
-            ["1"] = new HiveData
-            {
-                Name = "Ruche N\u00b01",
-                Temp = "5.2 / 28.1\u00b0C",
-                Hum = "83%",
-                Weight = "31.2 Kg",
-                WeightSeries = new float[] { 30.5f, 30.8f, 31f, 31.1f, 31f, 31.2f, 31.2f },
-                TempSeries = new float[] { 26f, 27f, 28f, 28.1f, 27.5f, 28f, 28.1f },
-                HumSeries = new float[] { 81f, 82f, 83f, 84f, 83f, 82f, 83f },
-                Lat = 47.3215,
-                Lng = 2.1064,
-                Stolen = false
-            },
-            ["2"] = new HiveData
-            {
-                Name = "Ruche N\u00b02",
-                Temp = "4.8 / 26.5\u00b0C",
-                Hum = "88%",
-                Weight = "28.7 Kg",
-                WeightSeries = new float[] { 28f, 28.2f, 28.5f, 28.6f, 28.5f, 28.7f, 28.7f },
-                TempSeries = new float[] { 25f, 25.5f, 26f, 26.5f, 26f, 26.3f, 26.5f },
-                HumSeries = new float[] { 86f, 87f, 88f, 89f, 88f, 87f, 88f },
-                Lat = 43.6047,
-                Lng = 1.4442,
-                Stolen = false
-            },
-            ["3"] = new HiveData
-            {
-                Name = "Ruche N\u00b03",
-                Temp = "3.9 / 24.3\u00b0C",
-                Hum = "91%",
-                Weight = "35.1 Kg",
-                WeightSeries = new float[] { 34.5f, 34.7f, 34.9f, 35f, 34.9f, 35.1f, 35.1f },
-                TempSeries = new float[] { 23f, 23.5f, 24f, 24.3f, 24f, 24.2f, 24.3f },
-                HumSeries = new float[] { 89f, 90f, 91f, 92f, 91f, 90f, 91f },
-                Lat = 48.8566,
-                Lng = 2.3522,
-                Stolen = false
-            },
-            ["4"] = new HiveData
-            {
-                Name = "Ruche N\u00b04",
-                Temp = "6.1 / 29.0\u00b0C",
-                Hum = "85%",
-                Weight = "32.4 Kg",
-                WeightSeries = new float[] { 31.8f, 32f, 32.2f, 32.3f, 32.2f, 32.4f, 32.4f },
-                TempSeries = new float[] { 27f, 28f, 28.5f, 29f, 28.5f, 28.8f, 29f },
-                HumSeries = new float[] { 83f, 84f, 85f, 86f, 85f, 84f, 85f },
-                Lat = 45.7640,
-                Lng = 4.8357,
-                Stolen = false
-            },
-            ["5"] = new HiveData
-            {
-                Name = "Ruche N\u00b05",
-                Temp = "3.5 / 27.2\u00b0C",
-                Hum = "90%",
-                Weight = "33.8 Kg",
-                WeightSeries = new float[] { 33f, 33.2f, 33.5f, 33.6f, 33.5f, 33.8f, 33.8f },
-                TempSeries = new float[] { 25.5f, 26f, 26.8f, 27.2f, 27f, 27.1f, 27.2f },
-                HumSeries = new float[] { 88f, 89f, 90f, 91f, 90f, 89f, 90f },
-                Lat = 44.8378,
-                Lng = -0.5792,
-                Stolen = false
-            },
-        };
-
-        // ═══════════════════════════════════════════
-        //  CHAMPS
-        // ═══════════════════════════════════════════
-        string currentKey = "all";
-        string currentChart = "weight"; // "weight" | "temp" | "hum"
-
-        // Contrôles — initialisés dans BuildUI() avant tout usage
-        ComboBox cboHive = null!;
-        Label lblClock = null!;
-        Label lblChartTitle = null!;
-        Panel pnlChart = null!;
-        Panel pnlStats = null!;
-        WebView2 webMap = null!;
-        System.Windows.Forms.Timer ticker = null!;
-
-        // Heure en ligne
-        static readonly HttpClient httpClient = new();
-        DateTime onlineBase = DateTime.MinValue;
-        DateTime localSnapshot = DateTime.MinValue;
-        bool timeReady = false;
-
-        // ═══════════════════════════════════════════
-        //  CONSTRUCTEUR
-        // ═══════════════════════════════════════════
         public Form1()
         {
-            InitializeComponent();
-            BuildUI();
-            Load += OnFormLoad;
+            GMapProvider.UserAgent = "BeeMonitorPro_" + Guid.NewGuid().ToString().Substring(0, 5);
+            InitInterface();
+
+            _mqttService = new RecevoirMqtt();
+
+            // Événements MQTT
+            _mqttService.OnDataReceived += (data) => {
+                this.Invoke(new Action(() => ProcessData(data)));
+            };
+
+            _mqttService.OnLog += (tag, msg, color) => {
+                this.Invoke(new Action(() => Log(tag, msg, color)));
+            };
+
+            this.Load += async (s, e) => {
+                await Task.Delay(500);
+                SafeInitMap();
+                Log("DEBUG", "--- DÉBUT INITIALISATION ---", Color.Purple);
+                ChargerHistoriqueDepuisBDD();
+                await _mqttService.Connecter();
+            };
+
+            // Timer pour les alertes (Vol / Essaimage)
+            blinkTimer = new Timer { Interval = 500 };
+            blinkTimer.Tick += (s, e) => {
+                isBlink = !isBlink;
+                if (pnlAlerte != null) pnlAlerte.BackColor = isBlink ? Color.Red : Color.Black;
+            };
         }
 
-        async void OnFormLoad(object? sender, EventArgs e)
+        private void ChargerHistoriqueDepuisBDD()
         {
-            await webMap.EnsureCoreWebView2Async(null);
-            LoadMap();
-        }
-
-        // ═══════════════════════════════════════════
-        //  CONSTRUCTION INTERFACE
-        // ═══════════════════════════════════════════
-        void BuildUI()
-        {
-            Text = "BeeMonitor";
-            WindowState = FormWindowState.Maximized;
-            MinimumSize = new Size(1000, 650);
-            BackColor = BG;
-            StartPosition = FormStartPosition.CenterScreen;
-            Font = new Font("Segoe UI", 9f);
-
-            var root = new TableLayoutPanel
+            try
             {
-                Dock = DockStyle.Fill,
-                BackColor = BG,
-                ColumnCount = 1,
-                RowCount = 3,
-                Margin = new Padding(0),
-                Padding = new Padding(0)
-            };
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 80f));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 215f));
-            Controls.Add(root);
+                Log("BDD", "Lecture de la base de données...", Color.Blue);
+                List<Mesure> historique = DatabaseHelper.LoadAll();
 
-            root.Controls.Add(MakeHeader(), 0, 0);
-            root.Controls.Add(MakeMap(), 0, 1);
-            root.Controls.Add(MakeBottom(), 0, 2);
-
-            ticker = new System.Windows.Forms.Timer { Interval = 1000 };
-            ticker.Tick += OnTick;
-            ticker.Start();
-
-            SyncOnlineTime();
-            OnTick(this, EventArgs.Empty);
-        }
-
-        // ─── HEADER ─────────────────────────────────
-        Panel MakeHeader()
-        {
-            var pnl = new Panel { Dock = DockStyle.Fill, BackColor = CARD2 };
-            pnl.Paint += (object? s, PaintEventArgs e) =>
-            {
-                using Pen p = new(HONEY, 2);
-                e.Graphics.DrawLine(p, 0, pnl.Height - 1, pnl.Width, pnl.Height - 1);
-            };
-
-            var bee = new Label
-            {
-                Text = "🐝",
-                Font = new Font("Segoe UI Emoji", 13f),
-                Left = 10,
-                Top = 24,
-                Width = 28,
-                Height = 28,
-                AutoSize = false,
-                BackColor = Color.Transparent
-            };
-
-            var title = new Label
-            {
-                Text = "BeeMonitor",
-                Font = new Font("Segoe UI", 14f, FontStyle.Bold),
-                Left = 44,
-                Top = 10,
-                AutoSize = true,
-                BackColor = Color.Transparent,
-                ForeColor = HONEY
-            };
-
-            var sub = new Label
-            {
-                Text = "Surveillance connect\u00e9e des ruches",
-                Font = new Font("Courier New", 8f),
-                Left = 46,
-                Top = 42,
-                AutoSize = true,
-                BackColor = Color.Transparent,
-                ForeColor = MUTED
-            };
-
-            lblClock = new Label
-            {
-                Text = "",
-                Font = new Font("Segoe UI", 11f, FontStyle.Bold),
-                AutoSize = true,
-                Top = 28,
-                BackColor = Color.Transparent,
-                ForeColor = TEXTCOLOR
-            };
-
-            var lblSel = new Label
-            {
-                Text = "🏠 Ruche :",
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                AutoSize = true,
-                Top = 29,
-                BackColor = Color.Transparent,
-                ForeColor = HONEY
-            };
-
-            cboHive = new ComboBox
-            {
-                Width = 160,
-                Height = 28,
-                Top = 24,
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = CARD2,
-                ForeColor = TEXTCOLOR,
-                Font = new Font("Segoe UI", 10f, FontStyle.Bold),
-                FlatStyle = FlatStyle.Flat
-            };
-            cboHive.Items.AddRange(new object[]
-                { "Toutes (5)", "Ruche N\u00b01", "Ruche N\u00b02",
-                  "Ruche N\u00b03", "Ruche N\u00b04", "Ruche N\u00b05" });
-            cboHive.SelectedIndex = 0;
-            cboHive.SelectedIndexChanged += OnHiveChanged;
-
-            pnl.Resize += (object? s, EventArgs e) =>
-            {
-                cboHive.Left = pnl.Width - cboHive.Width - 14;
-                lblSel.Left = cboHive.Left - lblSel.PreferredWidth - 8;
-                lblClock.Left = (pnl.Width - lblClock.PreferredWidth) / 2;
-            };
-
-            pnl.Controls.Add(bee);
-            pnl.Controls.Add(title);
-            pnl.Controls.Add(sub);
-            pnl.Controls.Add(lblClock);
-            pnl.Controls.Add(lblSel);
-            pnl.Controls.Add(cboHive);
-            return pnl;
-        }
-
-        // ─── SYNCHRO HEURE EN LIGNE ─────────────────
-        async void SyncOnlineTime()
-        {
-            string[] urls =
-            {
-                "https://timeapi.io/api/Time/current/zone?timeZone=Europe%2FParis",
-                "https://worldtimeapi.org/api/timezone/Europe/Paris",
-            };
-
-            foreach (string url in urls)
-            {
-                try
+                if (historique == null)
                 {
-                    httpClient.DefaultRequestHeaders.Clear();
-                    httpClient.DefaultRequestHeaders.Add("User-Agent", "BeeMonitor/1.0");
-
-                    var resp = await httpClient.GetAsync(url);
-                    if (!resp.IsSuccessStatusCode) continue;
-                    string json = await resp.Content.ReadAsStringAsync();
-
-                    DateTime parsed = DateTime.MinValue;
-
-                    if (url.Contains("timeapi.io"))
-                    {
-                        int idx = json.IndexOf("\"dateTime\":");
-                        if (idx >= 0)
-                        {
-                            int s2 = json.IndexOf('"', idx + 11) + 1;
-                            int e2 = json.IndexOf('"', s2);
-                            parsed = DateTime.Parse(
-                                json[s2..e2],
-                                CultureInfo.InvariantCulture);
-                        }
-                    }
-                    else if (url.Contains("worldtimeapi"))
-                    {
-                        int idx = json.IndexOf("\"datetime\":");
-                        if (idx >= 0)
-                        {
-                            int s2 = json.IndexOf('"', idx + 11) + 1;
-                            int e2 = json.IndexOf('"', s2);
-                            parsed = DateTime.Parse(
-                                json[s2..e2],
-                                CultureInfo.InvariantCulture,
-                                DateTimeStyles.RoundtripKind).ToLocalTime();
-                        }
-                    }
-
-                    if (parsed != DateTime.MinValue)
-                    {
-                        onlineBase = parsed;
-                        localSnapshot = DateTime.Now;
-                        timeReady = true;
-
-                        if (lblClock.IsHandleCreated)
-                            lblClock.Invoke(() => OnTick(this, EventArgs.Empty));
-
-                        break;
-                    }
+                    Log("ERR", "Serveur injoignable ou erreur SQL.", Color.Red);
+                    return;
                 }
-                catch { /* essai suivant */ }
-            }
 
-            await Task.Delay(5 * 60 * 1000);
-            SyncOnlineTime();
-        }
+                Log("BDD", $"{historique.Count} lignes récupérées.", Color.DarkBlue);
 
-        void OnTick(object? sender, EventArgs e)
-        {
-            if (!timeReady)
-            {
-                lblClock.Text = "⏳  Synchronisation de l'heure...";
-                lblClock.ForeColor = MUTED;
-                if (lblClock.Parent != null)
-                    lblClock.Left = (lblClock.Parent.Width - lblClock.PreferredWidth) / 2;
-                return;
-            }
+                var historiqueTrie = historique.OrderBy(m => m.DateMesure).ToList();
+                int pointsValides = 0;
 
-            TimeSpan elapsed = DateTime.Now - localSnapshot;
-            DateTime now = onlineBase + elapsed;
-
-            lblClock.ForeColor = TEXTCOLOR;
-            var fr = new CultureInfo("fr-FR");
-            string jour = now.ToString("dddd", fr);
-            jour = char.ToUpper(jour[0]) + jour[1..];
-            lblClock.Text =
-                jour + " " + now.Day + " " +
-                now.ToString("MMMM yyyy", fr) + "   \u2022   " +
-                now.ToString("HH:mm:ss");
-
-            if (lblClock.Parent != null)
-                lblClock.Left = (lblClock.Parent.Width - lblClock.PreferredWidth) / 2;
-        }
-
-        // ─── CARTE ──────────────────────────────────
-        Panel MakeMap()
-        {
-            var pnl = new Panel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = BG,
-                Padding = new Padding(10, 8, 10, 4)
-            };
-            webMap = new WebView2 { Dock = DockStyle.Fill };
-            pnl.Controls.Add(webMap);
-            return pnl;
-        }
-
-        // ─── BAS ────────────────────────────────────
-        Panel MakeBottom()
-        {
-            var outer = new Panel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = BG,
-                Padding = new Padding(10, 6, 10, 8)
-            };
-
-            var tbl = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = BG,
-                ColumnCount = 2,
-                RowCount = 1
-            };
-            tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40f));
-            tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60f));
-            tbl.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
-            outer.Controls.Add(tbl);
-
-            // ── Graphique ──
-            var chartCard = new Panel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = CARD,
-                Margin = new Padding(0, 0, 8, 0)
-            };
-            chartCard.Paint += (object? s, PaintEventArgs e) =>
-            {
-                using Pen p = new(Color.FromArgb(20, 255, 255, 255), 1);
-                RoundRect(e.Graphics, p,
-                    new Rectangle(0, 0, chartCard.Width - 1, chartCard.Height - 1), 10);
-            };
-
-            lblChartTitle = new Label
-            {
-                Text = "\u23f8  \u00c9volution du poids \u2014 7 derniers jours",
-                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-                Left = 12,
-                Top = 8,
-                AutoSize = true,
-                BackColor = Color.Transparent,
-                ForeColor = MUTED
-            };
-
-            pnlChart = new Panel
-            {
-                Left = 8,
-                Top = 30,
-                BackColor = Color.Transparent
-            };
-            pnlChart.Paint += DrawChart;
-
-            chartCard.Resize += (object? s, EventArgs e) =>
-            {
-                pnlChart.Width = chartCard.ClientSize.Width - 16;
-                pnlChart.Height = Math.Max(10, chartCard.ClientSize.Height - 38);
-                pnlChart.Invalidate();
-            };
-
-            chartCard.Controls.Add(lblChartTitle);
-            chartCard.Controls.Add(pnlChart);
-            tbl.Controls.Add(chartCard, 0, 0);
-
-            // ── Stats ──
-            pnlStats = new Panel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = BG,
-                Margin = new Padding(8, 0, 0, 0),
-                Cursor = Cursors.Hand
-            };
-            pnlStats.Paint += DrawStats;
-            pnlStats.Resize += (object? s, EventArgs e) => pnlStats.Invalidate();
-            pnlStats.MouseClick += OnStatClick;
-            tbl.Controls.Add(pnlStats, 1, 0);
-
-            return outer;
-        }
-
-        // ═══════════════════════════════════════════
-        //  CLIC SUR UNE CARTE STAT
-        // ═══════════════════════════════════════════
-        void OnStatClick(object? sender, MouseEventArgs e)
-        {
-            int gap = 10;
-            int cW = (pnlStats.Width - gap * 2) / 3;
-
-            string[] keys = { "temp", "hum", "weight" };
-            string[] titles =
-            {
-                "🌡\ufe0f  Temp\u00e9rature \u2014 7 derniers jours",
-                "💧  Humidit\u00e9 \u2014 7 derniers jours",
-                "\u2696\ufe0f  Poids \u2014 7 derniers jours"
-            };
-
-            for (int i = 0; i < 3; i++)
-            {
-                int cx = i * (cW + gap);
-                if (e.X >= cx && e.X < cx + cW)
+                foreach (var m in historiqueTrie)
                 {
-                    currentChart = keys[i];
-                    lblChartTitle.Text = titles[i];
-                    pnlStats.Invalidate();
-                    pnlChart.Invalidate();
-                    break;
+                    int id = m.RucheId;
+                    if (id <= 0) continue;
+
+                    if (!histT.ContainsKey(id))
+                    {
+                        histT[id] = new ChartValues<DateTimePoint>();
+                        histP[id] = new ChartValues<DateTimePoint>();
+                        histH[id] = new ChartValues<DateTimePoint>();
+                        positions[id] = new PointLatLng(m.Latitude ?? 48.85, m.Longitude ?? 2.35);
+                        etatsAcquits[id] = true;
+
+                        if (!comboRuches.Items.Contains("Ruche n°" + id))
+                            comboRuches.Items.Add("Ruche n°" + id);
+                    }
+
+                    if (m.Temp.HasValue) histT[id].Add(new DateTimePoint(m.DateMesure, m.Temp.Value));
+                    if (m.Poids.HasValue) histP[id].Add(new DateTimePoint(m.DateMesure, m.Poids.Value));
+                    if (m.Humid.HasValue) histH[id].Add(new DateTimePoint(m.DateMesure, m.Humid.Value));
+                    pointsValides++;
+                }
+
+                UpdateUI();
+                Log("OK", $"Historique chargé : {pointsValides} points.", Color.Green);
+            }
+            catch (Exception ex)
+            {
+                Log("CRIT", "Erreur BDD : " + ex.Message, Color.Red);
+            }
+        }
+
+        private void ProcessData(BeeData d)
+        {
+            if (d.RucheId <= 0) return;
+
+            // Sauvegarde automatique
+            DatabaseHelper.SaveBeeData(d);
+            Log("MQTT", $"Données reçues pour Ruche {d.RucheId}", Color.DarkGreen);
+
+            if (!histT.ContainsKey(d.RucheId))
+            {
+                histT[d.RucheId] = new ChartValues<DateTimePoint>();
+                histP[d.RucheId] = new ChartValues<DateTimePoint>();
+                histH[d.RucheId] = new ChartValues<DateTimePoint>();
+                positions[d.RucheId] = d.Location ?? new PointLatLng(48.85, 2.35);
+                etatsAcquits[d.RucheId] = true;
+                if (!comboRuches.Items.Contains("Ruche n°" + d.RucheId))
+                    comboRuches.Items.Add("Ruche n°" + d.RucheId);
+            }
+
+            if (d.Temperature.HasValue) AddPt(histT[d.RucheId], d.Temperature.Value);
+            if (d.PoidsKg.HasValue) AddPt(histP[d.RucheId], d.PoidsKg.Value);
+            if (d.Humidite.HasValue) AddPt(histH[d.RucheId], d.Humidite.Value);
+            if (d.Location.HasValue) positions[d.RucheId] = d.Location.Value;
+
+            // Détection Alertes
+            if (d.VolAlerte == "OUI")
+            {
+                messagesAlerte[d.RucheId] = $"⚠️ VOL EN COURS - Ruche n°{d.RucheId}";
+                etatsAcquits[d.RucheId] = false;
+            }
+            if (d.AlerteEssaimage == "OUI")
+            {
+                messagesAlerte[d.RucheId] = $"🐝 ESSAIMAGE - Ruche n°{d.RucheId}";
+                etatsAcquits[d.RucheId] = false;
+            }
+
+            UpdateUI();
+        }
+
+        private void UpdateUI()
+        {
+            if (histT == null || !histT.ContainsKey(_selectedId)) return;
+
+            // Maj Graphiques et Labels
+            if (chartT != null && chartT.Series.Count > 0)
+            {
+                chartT.Series[0].Values = histT[_selectedId];
+                lblT.Text = histT[_selectedId].Count > 0 ? $"{histT[_selectedId].Last().Value:0.0}°C" : "--";
+            }
+            if (chartP != null && chartP.Series.Count > 0)
+            {
+                chartP.Series[0].Values = histP[_selectedId];
+                lblP.Text = histP[_selectedId].Count > 0 ? $"{histP[_selectedId].Last().Value:0.0}kg" : "--";
+            }
+            if (chartH != null && chartH.Series.Count > 0)
+            {
+                chartH.Series[0].Values = histH[_selectedId];
+                lblH.Text = histH[_selectedId].Count > 0 ? $"{histH[_selectedId].Last().Value:0}%" : "--";
+            }
+
+            // Maj Carte
+            if (markersOverlay != null)
+            {
+                markersOverlay.Markers.Clear();
+                foreach (var pos in positions)
+                {
+                    var m = new GMarker(pos.Value, GMap.NET.WindowsForms.Markers.GMarkerGoogleType.red_dot)
+                    { ToolTipText = "Ruche n°" + pos.Key };
+                    markersOverlay.Markers.Add(m);
                 }
             }
-        }
 
-        // ═══════════════════════════════════════════
-        //  CARTE LEAFLET
-        // ═══════════════════════════════════════════
-        void LoadMap()
-        {
-            if (webMap.CoreWebView2 == null) return;
-            webMap.CoreWebView2.NavigateToString(BuildHtml());
-        }
+            // Gestion Alerte Visuelle
+            _idAlerteEnCours = -1;
+            foreach (var kp in etatsAcquits) { if (!kp.Value) { _idAlerteEnCours = kp.Key; break; } }
 
-        string BuildHtml()
-        {
-            if (!hives.TryGetValue(currentKey, out HiveData? d))
-                d = hives["all"];
-
-            string latC = d.Lat.ToString(CultureInfo.InvariantCulture);
-            string lngC = d.Lng.ToString(CultureInfo.InvariantCulture);
-            int zoom = (currentKey == "all") ? 6 : 12;
-
-            var jsData = new System.Text.StringBuilder();
-            jsData.AppendLine("var hiveInfo = {");
-            foreach (KeyValuePair<string, HiveData> kv in hives)
+            if (_idAlerteEnCours != -1 && messagesAlerte.ContainsKey(_idAlerteEnCours))
             {
-                if (kv.Key == "all") continue;
-                HiveData h = kv.Value;
-                string lat = h.Lat.ToString(CultureInfo.InvariantCulture);
-                string lng = h.Lng.ToString(CultureInfo.InvariantCulture);
-                string st = h.Stolen ? "true" : "false";
-                jsData.AppendLine(
-                    $"  '{kv.Key}':{{name:'{h.Name}',temp:'{h.Temp}',hum:'{h.Hum}'," +
-                    $"weight:'{h.Weight}',lat:{lat},lng:{lng},stolen:{st}}},");
-            }
-            jsData.AppendLine("};");
-
-            string filter = (currentKey == "all") ? "null" : $"'{currentKey}'";
-
-            string html =
-"<!DOCTYPE html>" +
-"<html><head><meta charset='utf-8'/>" +
-"<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'/>" +
-"<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>" +
-"<style>" +
-"*{margin:0;padding:0;box-sizing:border-box;}" +
-"html,body,#map{width:100%;height:100%;}" +
-".leaflet-popup-content-wrapper{background:#0F3460;color:#F0E6D3;border:2px solid #F5A623;border-radius:12px;font-family:'Segoe UI',sans-serif;}" +
-".leaflet-popup-tip{background:#0F3460;}" +
-".leaflet-popup-content{margin:14px 18px;min-width:210px;}" +
-".vbtn{margin-top:10px;width:100%;padding:8px 0;border:none;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;font-family:'Segoe UI',sans-serif;}" +
-"</style>" +
-"</head><body>" +
-"<div id='map'></div>" +
-"<script>" +
-jsData.ToString() +
-$"var filter={filter};" +
-"var markers={};" +
-"function makeIcon(stolen){" +
-"  var col=stolen?'#E63946':'#40916C';" +
-"  var em=stolen?'🚨':'🐝';" +
-"  return L.divIcon({className:'',html:'<div style=\"width:40px;height:40px;background:'+col+';border-radius:50%;border:3px solid white;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 0 14px '+col+'88;\">'+em+'</div>',iconSize:[40,40],iconAnchor:[20,20],popupAnchor:[0,-24]});}" +
-"function makePopup(k){" +
-"  var h=hiveInfo[k];" +
-"  var col=h.stolen?'#E63946':'#40916C';" +
-"  var warn=h.stolen?'<div style=\"color:#E63946;font-weight:bold;margin:4px 0;\">⚠️ VOL SIGNAL\u00c9</div>':'';" +
-"  var bc=h.stolen?'#40916C':'#E63946';" +
-"  var bt=h.stolen?'✅ Annuler le signalement':'🚨 Signaler un vol';" +
-"  return '<b style=\"font-size:15px;color:'+col+'\">'+h.name+'</b>'+warn+'<br>🌡️ <b>Temp :</b> '+h.temp+'<br>💧 <b>Humidit\u00e9 :</b> '+h.hum+'<br>⚖️ <b>Poids :</b> '+h.weight+'<br><button class=\"vbtn\" style=\"background:'+bc+';color:white;\" onclick=\"toggleVol(\\''+k+'\\');\">'+bt+'</button>';}" +
-"function toggleVol(k){" +
-"  hiveInfo[k].stolen=!hiveInfo[k].stolen;" +
-"  markers[k].setIcon(makeIcon(hiveInfo[k].stolen));" +
-"  markers[k].setPopupContent(makePopup(k));" +
-"  markers[k].openPopup();}" +
-$"var map=L.map('map').setView([{latC},{lngC}],{zoom});" +
-"L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'\u00a9 <a href=\"https://openstreetmap.org\">OpenStreetMap</a> contributors',maxZoom:19}).addTo(map);" +
-"for(var key in hiveInfo){" +
-"  if(filter!==null && key!==filter) continue;" +
-"  (function(k){" +
-"    var m=L.marker([hiveInfo[k].lat,hiveInfo[k].lng],{icon:makeIcon(hiveInfo[k].stolen)}).addTo(map).bindPopup(makePopup(k));" +
-"    markers[k]=m;" +
-"  })(key);}" +
-"</script></body></html>";
-
-            return html;
-        }
-
-        // ═══════════════════════════════════════════
-        //  GRAPHIQUE
-        // ═══════════════════════════════════════════
-        void DrawChart(object? sender, PaintEventArgs e)
-        {
-            Graphics g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-            int W = pnlChart.Width, H = pnlChart.Height;
-            if (W < 50 || H < 50) return;
-
-            int pL = 54, pR = 70, pT = 20, pB = 34;
-            int dW = W - pL - pR, dH = H - pT - pB;
-            if (dW < 10 || dH < 10) return;
-
-            if (!hives.TryGetValue(currentKey, out HiveData? data))
-                data = hives["all"];
-
-            float[] series;
-            float[] avgSeries;
-            Color cc;
-            string unit;
-            string seriesLabel;
-
-            if (currentChart == "temp")
-            {
-                series = data.TempSeries;
-                avgSeries = new float[] { 24.8f, 25.0f, 25.5f, 25.9f, 25.4f, 25.7f, 25.8f };
-                cc = DANGER;
-                unit = "\u00b0C";
-                seriesLabel = "Temp\u00e9rature";
-            }
-            else if (currentChart == "hum")
-            {
-                series = data.HumSeries;
-                avgSeries = new float[] { 86f, 87f, 87.5f, 88f, 87.5f, 87f, 87f };
-                cc = SKY;
-                unit = "%";
-                seriesLabel = "Humidit\u00e9";
+                pnlAlerte.Visible = true;
+                lblAlerte.Text = messagesAlerte[_idAlerteEnCours];
+                blinkTimer?.Start();
             }
             else
             {
-                series = data.WeightSeries;
-                avgSeries = new float[] { 31.5f, 31.7f, 32f, 32.1f, 32f, 32.2f, 32.2f };
-                bool stolen = currentKey != "all" &&
-                              hives.TryGetValue(currentKey, out HiveData? hv) &&
-                              hv!.Stolen;
-                cc = stolen ? DANGER : LEAF;
-                unit = " Kg";
-                seriesLabel = "Poids";
-            }
-
-            // 7 dernières dates
-            var fr = new CultureInfo("fr-FR");
-            string[] labels = new string[7];
-            for (int i = 0; i < 7; i++)
-                labels[i] = DateTime.Today.AddDays(i - 6).ToString("dd/MM", fr);
-
-            // Min / Max
-            float mn = float.MaxValue, mx = float.MinValue;
-            foreach (float v in series) { if (v < mn) mn = v; if (v > mx) mx = v; }
-            foreach (float v in avgSeries) { if (v < mn) mn = v; if (v > mx) mx = v; }
-            float rng = mx - mn; if (rng < 0.1f) rng = 1f;
-            mn -= rng * 0.15f; mx += rng * 0.15f; rng = mx - mn;
-
-            using Font smallFont = new("Segoe UI", 7.5f);
-            using Pen gridPen = new(Color.FromArgb(22, 255, 255, 255), 1);
-
-            for (int i = 0; i <= 4; i++)
-            {
-                float v = mn + rng * i / 4f;
-                float gy = pT + dH - dH * (float)i / 4f;
-                g.DrawLine(gridPen, pL, gy, pL + dW, gy);
-                using SolidBrush sb = new(MUTED);
-                g.DrawString(v.ToString("F1") + unit, smallFont, sb, 2, gy - 8);
-            }
-            using (Pen axisP = new(Color.FromArgb(40, 255, 255, 255), 1))
-                g.DrawLine(axisP, pL, pT, pL, pT + dH);
-
-            // Points
-            PointF[] pts = new PointF[series.Length];
-            PointF[] avgPts = new PointF[avgSeries.Length];
-            for (int i = 0; i < series.Length; i++)
-                pts[i] = new PointF(
-                    pL + (float)i / (series.Length - 1) * dW,
-                    pT + dH - (series[i] - mn) / rng * dH);
-            for (int i = 0; i < avgSeries.Length; i++)
-                avgPts[i] = new PointF(
-                    pL + (float)i / (avgSeries.Length - 1) * dW,
-                    pT + dH - (avgSeries[i] - mn) / rng * dH);
-
-            // Zone remplie
-            PointF[] fillPts = new PointF[series.Length + 2];
-            for (int i = 0; i < series.Length; i++) fillPts[i] = pts[i];
-            fillPts[series.Length] = new PointF(pL + dW, pT + dH);
-            fillPts[series.Length + 1] = new PointF(pL, pT + dH);
-            using (SolidBrush fb = new(Color.FromArgb(45, cc)))
-                g.FillPolygon(fb, fillPts);
-
-            // Courbe principale
-            using (Pen lp = new(cc, 2.5f))
-                g.DrawCurve(lp, pts, 0.35f);
-            foreach (PointF pt in pts)
-            {
-                using SolidBrush outer2 = new(cc);
-                using SolidBrush inner = new(CARD);
-                g.FillEllipse(outer2, pt.X - 5, pt.Y - 5, 10, 10);
-                g.FillEllipse(inner, pt.X - 2, pt.Y - 2, 4, 4);
-            }
-
-            // Courbe moyenne (tirets)
-            using (Pen dashPen = new(MUTED, 1.5f) { DashStyle = DashStyle.Dash })
-                g.DrawCurve(dashPen, avgPts, 0.35f);
-
-            // Labels X
-            using Font dateFont = new("Segoe UI", 7.5f);
-            for (int i = 0; i < labels.Length; i++)
-            {
-                SizeF sz = g.MeasureString(labels[i], dateFont);
-                using SolidBrush tb = new(TEXTCOLOR);
-                g.DrawString(labels[i], dateFont, tb, pts[i].X - sz.Width / 2, pT + dH + 5);
-            }
-
-            // Valeur finale
-            using Font boldFont = new("Segoe UI", 8.5f, FontStyle.Bold);
-            using SolidBrush valBrush = new(cc);
-            g.DrawString(
-                series[^1].ToString("F1") + unit,
-                boldFont, valBrush,
-                pts[^1].X + 8, pts[^1].Y - 12);
-
-            // Légende
-            using SolidBrush leg1 = new(cc);
-            using SolidBrush leg2 = new(MUTED);
-            g.FillRectangle(leg1, pL + 4, pT + 2, 12, 12);
-            g.DrawString(seriesLabel, smallFont, leg2, pL + 18, pT + 2);
-            g.FillRectangle(leg2, pL + 4, pT + 16, 12, 12);
-            g.DrawString("Moyenne", smallFont, leg2, pL + 18, pT + 16);
-        }
-
-        // ═══════════════════════════════════════════
-        //  STATS
-        // ═══════════════════════════════════════════
-        void DrawStats(object? sender, PaintEventArgs e)
-        {
-            Graphics g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-            int W = pnlStats.Width, H = pnlStats.Height;
-            if (W < 30 || H < 30) return;
-
-            if (!hives.TryGetValue(currentKey, out HiveData? d))
-                d = hives["all"];
-
-            float hp = 0.87f;
-            if (float.TryParse(
-                    d.Hum.Replace("%", "").Trim(),
-                    NumberStyles.Float, CultureInfo.InvariantCulture,
-                    out float parsedHp))
-                hp = parsedHp / 100f;
-
-            string[] labels = { "Temp\u00e9rature", "Humidit\u00e9", "Poids total" };
-            string[] icons = { "🌡\ufe0f", "💧", "\u2696\ufe0f" };
-            string[] values = { d.Temp, d.Hum, d.Weight };
-            Color[] colors = { DANGER, SKY, HONEY };
-            float[] pcts = { 0.72f, hp, 0.67f };
-            string[] ckeys = { "temp", "hum", "weight" };
-
-            int gap = 10;
-            int cW = (W - gap * 2) / 3;
-
-            for (int i = 0; i < 3; i++)
-            {
-                int cx = i * (cW + gap);
-                Color col = colors[i];
-                bool selected = currentChart == ckeys[i];
-                var rect = new Rectangle(cx, 0, cW, H);
-
-                Color bgCol = selected
-                    ? Color.FromArgb(35, 55, 90)
-                    : CARD;
-                RoundRect(g, null, rect, 12, new SolidBrush(bgCol));
-
-                using Pen borderPen = selected
-                    ? new Pen(col, 2.5f)
-                    : new Pen(Color.FromArgb(60, col), 1.5f);
-                RoundRect(g, borderPen, rect, 12);
-
-                using SolidBrush topBar = new(col);
-                RoundRect(g, null, new Rectangle(cx + 2, 2, cW - 4, 6), 3, topBar);
-
-                if (selected)
-                {
-                    using Font sf = new("Segoe UI", 7.5f, FontStyle.Bold);
-                    const string at = "\u25cf Actif";
-                    SizeF as2 = g.MeasureString(at, sf);
-                    using SolidBrush ab = new(col);
-                    g.DrawString(at, sf, ab, cx + cW - (int)as2.Width - 8, 8);
-                }
-
-                using Font iconFont = new("Segoe UI Emoji", 22f);
-                using SolidBrush ib = new(col);
-                g.DrawString(icons[i], iconFont, ib, cx + 14, 12);
-
-                float vs = 18f;
-                while (vs > 10f)
-                {
-                    using Font tf = new("Segoe UI", vs, FontStyle.Bold);
-                    if (g.MeasureString(values[i], tf).Width <= cW - 28) break;
-                    vs -= 1f;
-                }
-                using Font valFont = new("Segoe UI", vs, FontStyle.Bold);
-                int vy = H / 2 - 2;
-                using SolidBrush vb = new(TEXTCOLOR);
-                g.DrawString(values[i], valFont, vb, cx + 14, vy);
-
-                using Font lblFont = new("Segoe UI", 9f);
-                int ly = Math.Min(
-                    vy + (int)g.MeasureString(values[i], valFont).Height + 2,
-                    H - 36);
-                using SolidBrush lb2 = new(MUTED);
-                g.DrawString(labels[i], lblFont, lb2, cx + 14, ly);
-
-                int by = H - 16, bw = cW - 28;
-                if (bw > 0)
-                {
-                    using SolidBrush trackBrush = new(Color.FromArgb(25, 255, 255, 255));
-                    g.FillRectangle(trackBrush, cx + 14, by, bw, 7);
-                    using LinearGradientBrush bb = new(
-                        new Rectangle(cx + 14, by, bw, 7),
-                        col, Color.FromArgb(160, col),
-                        LinearGradientMode.Horizontal);
-                    g.FillRectangle(bb, cx + 14, by, (int)(bw * pcts[i]), 7);
-                }
+                pnlAlerte.Visible = false;
+                blinkTimer?.Stop();
             }
         }
 
-        // ═══════════════════════════════════════════
-        //  ÉVÉNEMENTS
-        // ═══════════════════════════════════════════
-        void OnHiveChanged(object? sender, EventArgs e)
+        private void InitInterface()
         {
-            string[] keys = { "all", "1", "2", "3", "4", "5" };
-            currentKey = keys[cboHive.SelectedIndex];
-            LoadMap();
-            pnlChart.Invalidate();
-            pnlStats.Invalidate();
+            this.Text = "BEE MONITOR PRO - Unified Version";
+            this.WindowState = FormWindowState.Maximized;
+            this.BackColor = Color.White;
+
+            topPanel = new Panel { Dock = DockStyle.Top, Height = 60, BackColor = Color.FromArgb(40, 40, 40) };
+
+            comboRuches = new ComboBox { Location = new Point(20, 18), Width = 150, DropDownStyle = ComboBoxStyle.DropDownList };
+            comboRuches.SelectedIndexChanged += (s, e) => {
+                if (comboRuches.SelectedItem == null) return;
+                _selectedId = int.Parse(comboRuches.SelectedItem.ToString().Replace("Ruche n°", ""));
+                UpdateUI();
+                if (positions.ContainsKey(_selectedId) && map != null) map.Position = positions[_selectedId];
+            };
+
+            // Bouton Afficher BDD (Grille)
+
+
+
+
+
+
+
+
+
+
+
+
+            Button btnHist = new Button
+            {
+                Text = "Afficher BDD",
+                Location = new Point(190, 16),
+                Width = 100,
+                Height = 28,
+                BackColor = Color.Gray,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat
+            };
+            btnHist.Click += (s, e) => {
+                var data = DatabaseHelper.LoadAll();
+                Form f = new Form { Text = "Historique Complet", Size = new Size(900, 500), StartPosition = FormStartPosition.CenterScreen };
+                DataGridView dgv = new DataGridView { Dock = DockStyle.Fill, DataSource = data, ReadOnly = true, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill };
+                f.Controls.Add(dgv);
+                f.ShowDialog();
+            };
+
+            // Bouton Test BDD
+            Button btnTestBDD = new Button
+            {
+                Text = "Test Connexion",
+                Location = new Point(300, 16),
+                Width = 110,
+                Height = 28,
+                BackColor = Color.DarkBlue,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat
+            };
+            btnTestBDD.Click += (s, e) => MessageBox.Show(DatabaseHelper.TestConnexion());
+
+            // Bouton Recharger
+            Button btnReload = new Button
+            {
+                Text = "Force Reload",
+                Location = new Point(420, 16),
+                Width = 100,
+                Height = 28,
+                BackColor = Color.DarkSlateGray,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat
+            };
+            btnReload.Click += (s, e) => ChargerHistoriqueDepuisBDD();
+
+            topPanel.Controls.Add(comboRuches);
+            topPanel.Controls.Add(btnHist);
+            topPanel.Controls.Add(btnTestBDD);
+            topPanel.Controls.Add(btnReload);
+
+            pnlAlerte = new Panel { Dock = DockStyle.Top, Height = 50, Visible = false };
+            lblAlerte = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Color.White, Font = new Font("Segoe UI", 12, FontStyle.Bold), Cursor = Cursors.Hand };
+            lblAlerte.Click += (s, e) => { if (_idAlerteEnCours != -1) etatsAcquits[_idAlerteEnCours] = true; UpdateUI(); };
+            pnlAlerte.Controls.Add(lblAlerte);
+
+            sidePanel = new Panel { Dock = DockStyle.Left, Width = 320, AutoScroll = true };
+            sidePanel.Controls.Add(CreateModule("Humidité", Color.Teal, out lblH, out chartH));
+            sidePanel.Controls.Add(CreateModule("Poids", Color.Orange, out lblP, out chartP));
+            sidePanel.Controls.Add(CreateModule("Température", Color.Crimson, out lblT, out chartT));
+
+            gridLogs = new DataGridView
+            {
+                Dock = DockStyle.Bottom,
+                Height = 150,
+                RowHeadersVisible = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                ReadOnly = true,
+                BackgroundColor = Color.White
+            };
+            gridLogs.Columns.Add("H", "Heure"); gridLogs.Columns.Add("T", "Tag"); gridLogs.Columns.Add("M", "Message");
+
+            this.Controls.Add(sidePanel);
+            this.Controls.Add(gridLogs);
+            this.Controls.Add(topPanel);
+            this.Controls.Add(pnlAlerte);
+
+            InitialiserLes5RuchesParDefaut();
         }
 
-        // ═══════════════════════════════════════════
-        //  HELPER DESSIN ARRONDI
-        // ═══════════════════════════════════════════
-        static void RoundRect(Graphics g, Pen? pen, Rectangle r, int rad, Brush? fill = null)
+        private void InitialiserLes5RuchesParDefaut()
         {
-            using GraphicsPath path = new();
-            path.AddArc(r.X, r.Y, rad * 2, rad * 2, 180, 90);
-            path.AddArc(r.Right - rad * 2, r.Y, rad * 2, rad * 2, 270, 90);
-            path.AddArc(r.Right - rad * 2, r.Bottom - rad * 2, rad * 2, rad * 2, 0, 90);
-            path.AddArc(r.X, r.Bottom - rad * 2, rad * 2, rad * 2, 90, 90);
-            path.CloseAllFigures();
-            if (fill != null) g.FillPath(fill, path);
-            if (pen != null) g.DrawPath(pen, path);
+            for (int i = 1; i <= 5; i++)
+            {
+                if (!histT.ContainsKey(i))
+                {
+                    histT[i] = new ChartValues<DateTimePoint>();
+                    histP[i] = new ChartValues<DateTimePoint>();
+                    histH[i] = new ChartValues<DateTimePoint>();
+                    positions[i] = new PointLatLng(48.85, 2.35);
+                    etatsAcquits[i] = true;
+                    if (!comboRuches.Items.Contains("Ruche n°" + i)) comboRuches.Items.Add("Ruche n°" + i);
+                }
+            }
+            if (comboRuches.Items.Count > 0) comboRuches.SelectedIndex = 0;
+        }
+
+        private void SafeInitMap()
+        {
+            map = new GMapControl { Dock = DockStyle.Fill, MapProvider = GMapProviders.GoogleMap, Zoom = 10, CanDragMap = true };
+            markersOverlay = new GMapOverlay("markers");
+            map.Overlays.Add(markersOverlay);
+            this.Controls.Add(map);
+            map.BringToFront();
+        }
+
+        private Panel CreateModule(string t, Color c, out Label l, out WinCharts.CartesianChart ch)
+        {
+            Panel p = new Panel { Dock = DockStyle.Top, Height = 200, Padding = new Padding(10) };
+            l = new Label { Text = "--", Dock = DockStyle.Top, Height = 28, ForeColor = c, Font = new Font("Segoe UI", 14, FontStyle.Bold) };
+            ch = new WinCharts.CartesianChart { Dock = DockStyle.Fill, DisableAnimations = true };
+            ch.Series.Add(new LineSeries
+            {
+                Values = new ChartValues<DateTimePoint>(),
+                Stroke = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(c.R, c.G, c.B)),
+                Fill = System.Windows.Media.Brushes.Transparent
+            });
+            p.Controls.Add(ch); p.Controls.Add(l); p.Controls.Add(new Label { Text = t, Dock = DockStyle.Top, Font = new Font("Segoe UI", 9, FontStyle.Bold) });
+            return p;
+        }
+
+        private void Log(string tag, string msg, Color c)
+        {
+            if (this.IsDisposed || gridLogs == null) return;
+            int r = gridLogs.Rows.Add(DateTime.Now.ToString("HH:mm:ss"), tag, msg);
+            gridLogs.Rows[r].DefaultCellStyle.ForeColor = c;
+            gridLogs.FirstDisplayedScrollingRowIndex = r;
+        }
+
+        private void AddPt(ChartValues<DateTimePoint> l, double v)
+        {
+            l.Add(new DateTimePoint(DateTime.Now, v));
+            if (l.Count > 50) l.RemoveAt(0);
         }
     }
 }
